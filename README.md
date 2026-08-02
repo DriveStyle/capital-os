@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# capital-os
-AI-powered Personal Wealth Operating System for long-term investing, portfolio management, financial planning and intelligent decision support.
-=======
 # Capital OS
 
 Capital OS is an AI-powered Personal Wealth Operating System designed to help individuals build long-term wealth through disciplined investing, portfolio management, AI recommendations, and financial planning.
@@ -64,7 +60,7 @@ Capital OS follows clean architecture principles with:
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -78,4 +74,3 @@ npm run dev
 
 ### Environment
 Copy `.env.example` to `.env` and adjust credentials as needed.
->>>>>>> 6ac8ab4 (Initial project structure)

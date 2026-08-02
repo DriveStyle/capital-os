@@ -10,7 +10,7 @@ class Settings(BaseModel):
     app_debug: bool = Field(default=True)
     api_prefix: str = Field(default="/api")
     database_url: str = Field(
-        default="postgresql+psycopg://postgres:postgres@localhost:5432/capital_os"
+        default="sqlite:///./capital_os.db"
     )
     secret_key: str = Field(default="change-me")
     ai_provider: str = Field(default="openai")
@@ -28,7 +28,7 @@ def get_settings() -> Settings:
         api_prefix=os.getenv("API_PREFIX", "/api"),
         database_url=os.getenv(
             "DATABASE_URL",
-            "postgresql+psycopg://postgres:postgres@localhost:5432/capital_os",
+            "sqlite:///./capital_os.db",
         ),
         secret_key=os.getenv("SECRET_KEY", "change-me"),
         ai_provider=os.getenv("AI_PROVIDER", "openai"),

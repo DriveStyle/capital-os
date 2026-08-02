@@ -6,17 +6,17 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db.base import Base
+from ..db.types import GUID
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id = mapped_column(
-        UUID(as_uuid=True),
+        GUID,
         primary_key=True,
         default=uuid.uuid4,
         nullable=False,
@@ -31,7 +31,7 @@ class Transaction(Base):
         nullable=False,
     )
     portfolio_id = mapped_column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("portfolios.id", ondelete="CASCADE"),
         nullable=False,
     )

@@ -20,8 +20,14 @@ def initialize_database() -> None:
     global engine, SessionLocal
     if engine is None or SessionLocal is None:
         from sqlalchemy import create_engine
-
-        engine = create_engine(get_database_url(), pool_pre_ping=True)
+        url = get_database_url()
+        connect_args = {}
+        if url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+            engine = create_engine(url, connect_args=connect_args)
+        else:
+            engine = create_engine(url, pool_pre_ping=True)
+            
         SessionLocal = sessionmaker(
             bind=engine,
             autoflush=False,

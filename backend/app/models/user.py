@@ -4,19 +4,16 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String, func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from typing import Optional
-
 from ..db.base import Base
+from ..db.types import GUID
 
 
 class User(Base):
     __tablename__ = "users"
 
     id = mapped_column(
-        UUID(as_uuid=True),
+        GUID,
         primary_key=True,
         default=uuid.uuid4,
         nullable=False,

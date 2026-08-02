@@ -13,6 +13,8 @@ venv/
 # FastAPI / SQLAlchemy
 *.log
 *.sqlite3
+*.db
+.tmp/
 
 # Node / Next.js
 node_modules/
