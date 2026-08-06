@@ -1,19 +1,97 @@
+import os
+import json
+import logging
 from typing import Dict, Any
+from dotenv import load_dotenv
+import httpx
+
+load_dotenv()
+
 from ..schemas.ai import AdvisoryRequest, AdvisoryResponse, RecommendationItem
 from ..config import get_settings
+
+logger = logging.getLogger("ai_service")
 
 
 class AIService:
     @staticmethod
     def generate_wealth_advice(req: AdvisoryRequest) -> AdvisoryResponse:
         settings = get_settings()
-        provider = settings.ai_provider
+        provider = os.getenv("AI_PROVIDER", settings.ai_provider).lower()
+        groq_key = os.getenv("GROQ_API_KEY")
 
-        # Rule-based / Model-driven financial analysis engine
         budget = req.monthly_investment_budget or 500.0
         risk = (req.risk_tolerance or "moderate").lower()
         country = (req.country_code or "UA").upper()
 
+        if groq_key and (provider == "groq" or not provider):
+            try:
+                headers = {
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                }
+                prompt = (
+                    f"You are Capital OS AI Wealth Advisor. Generate a structured JSON wealth plan for a user in country '{country}' "
+                    f"with a monthly budget of ${budget} and risk profile '{risk}'. "
+                    f"Return ONLY a raw JSON object with keys: summary, risk_assessment, country_notes, "
+                    f"recommended_actions (array of objects with category, action, priority, rationale)."
+                )
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": "You are a professional wealth operating system advisor. Respond strictly in valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.3,
+                }
+
+                with httpx.Client(timeout=15.0) as client:
+                    resp = client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        content = resp.json()["choices"][0]["message"]["content"]
+                        parsed = json.loads(content)
+                        recs = [
+                            RecommendationItem(
+                                category=r.get("category", "General"),
+                                action=r.get("action", "Invest"),
+                                priority=r.get("priority", "Medium"),
+                                rationale=r.get("rationale", ""),
+                            )
+                            for r in parsed.get("recommended_actions", [])
+                        ]
+                        if not recs:
+                            recs = [
+                                RecommendationItem(
+                                    category="Core Indexing",
+                                    action=f"Allocate ${int(budget * 0.8)}/mo into broad market ETFs.",
+                                    priority="High",
+                                    rationale="Groq AI validated portfolio foundation.",
+                                )
+                            ]
+                        raw_summary = parsed.get("summary", f"AI Wealth Strategy for {country}")
+                        if isinstance(raw_summary, dict):
+                            raw_summary = json.dumps(raw_summary, ensure_ascii=False)
+
+                        raw_risk = parsed.get("risk_assessment", f"Risk profile: {risk.upper()}")
+                        if isinstance(raw_risk, dict):
+                            raw_risk = json.dumps(raw_risk, ensure_ascii=False)
+
+                        raw_notes = parsed.get("country_notes", f"Jurisdiction: {country}")
+                        if isinstance(raw_notes, dict):
+                            raw_notes = json.dumps(raw_notes, ensure_ascii=False)
+
+                        return AdvisoryResponse(
+                            summary=str(raw_summary),
+                            risk_assessment=str(raw_risk),
+                            recommended_actions=recs,
+                            country_notes=str(raw_notes),
+                            provider_used="Groq (Llama-3.3-70b)",
+                        )
+            except Exception as e:
+                logger.error(f"Groq API call failed: {e}. Falling back to rule engine.")
+
+        # Fallback Rule-based engine
         if risk == "conservative":
             rec_1 = RecommendationItem(
                 category="Cash Reserves & Fixed Income",

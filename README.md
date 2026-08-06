@@ -1,6 +1,5 @@
 # Capital OS
-
-Capital OS is an AI-powered Personal Wealth Operating System designed to help individuals build long-term wealth through disciplined investing, portfolio management, AI recommendations, and financial planning.
+ is an AI-powered Personal Wealth Operating System designed to help individuals build long-term wealth through disciplined investing, portfolio management, AI recommendations, and financial planning.
 
 ## Overview
 

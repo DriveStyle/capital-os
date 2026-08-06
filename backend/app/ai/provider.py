@@ -3,7 +3,7 @@ from typing import Any
 
 
 class AIProvider(ABC):
-    """Abstract interface for AI providers.""
+    """Abstract interface for AI providers."""
 
     @abstractmethod
     def generate(self, prompt: str, **kwargs: Any) -> str:

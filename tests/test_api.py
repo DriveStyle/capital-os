@@ -22,10 +22,12 @@ def test_health_endpoint() -> None:
 
 
 def test_full_wealth_workflow() -> None:
+    import uuid
+    email = f"investor-{uuid.uuid4().hex[:6]}@capital-os.ai"
     # 1. Create User
     user_res = client.post(
         "/api/users/",
-        json={"email": "investor@capital-os.ai", "full_name": "Pro Investor"},
+        json={"email": email, "full_name": "Pro Investor"},
     )
     assert user_res.status_code == 201
     user_data = user_res.json()
