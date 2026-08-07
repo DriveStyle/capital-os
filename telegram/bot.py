@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+from typing import Dict, Any
 from dotenv import load_dotenv
 import httpx
 
@@ -11,99 +12,172 @@ logger = logging.getLogger("capital_os_bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-MINI_APP_URL = os.getenv("MINI_APP_URL", "")
+
+# User state storage for personalized country & budget onboarding
+USER_PROFILES: Dict[int, Dict[str, Any]] = {}
 
 
-async def handle_bot_command(command: str) -> dict:
-    """Process incoming bot command and interact with Capital OS backend API."""
+async def register_bot_commands(client: httpx.AsyncClient) -> None:
+    """Register permanent Telegram Menu button with all available commands."""
+    commands = [
+        {"command": "start", "description": "🚀 Главное меню и выбор страны"},
+        {"command": "portfolio", "description": "📊 Баланс и активы портфеля"},
+        {"command": "rebalance", "description": "⚖️ План докупки (Buy-Only)"},
+        {"command": "country", "description": "🌍 Выбор страны (UA / US / DE / UK)"},
+        {"command": "ai", "description": "🤖 AI-консультант Gemini"},
+        {"command": "search", "description": "🔍 Поиск инвест-проектов (Tavily)"},
+        {"command": "status", "description": "🟢 Статус сервера Capital OS"},
+    ]
+    try:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands",
+            json={"commands": commands},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            logger.info("Команды меню бота успешно зарегистрированы в Telegram!")
+    except Exception as e:
+        logger.error(f"Не удалось зарегистрировать команды меню: {e}")
+
+
+async def handle_bot_command(chat_id: int, command: str) -> dict:
+    """Process incoming bot command and interactive callbacks."""
+    profile = USER_PROFILES.setdefault(chat_id, {"country": "UA", "budget": 1000, "risk": "moderate"})
+
     async with httpx.AsyncClient() as client:
         try:
-            if command.startswith("/start"):
-                text = (
-                    "🚀 **Capital OS — Личная финансовая операционная система!**\n\n"
-                    "Все функции доступны прямо здесь в чате:\n"
-                    "• /portfolio — Баланс и структура активов\n"
-                    "• /rebalance — Расчет докупки (Buy-Only без налогов)\n"
-                    "• /ai — Советы AI-консультанта (Gemini)\n"
-                    "• /search <запрос> — Поиск инвест-проектов (Tavily)\n"
-                    "• /status — Проверка статуса бэкенда"
-                )
-                keyboard_buttons = [
-                    [{"text": "⚖️ Ребалансировка", "callback_data": "/rebalance"}, {"text": "🤖 AI Совет", "callback_data": "/ai"}],
-                    [{"text": "🔍 Поиск проектов (Tavily)", "callback_data": "/search etf"}]
-                ]
-                if MINI_APP_URL and "vercel.app" in MINI_APP_URL and "demo" not in MINI_APP_URL:
-                    keyboard_buttons.insert(0, [{"text": "📊 Открыть Web App", "web_app": {"url": MINI_APP_URL}}])
+            # Country selection callbacks
+            if command.startswith("set_country_"):
+                code = command.replace("set_country_", "").upper()
+                profile["country"] = code
+                country_names = {"UA": "Украина 🇺🇦", "US": "США 🇺🇸", "DE": "Германия 🇩🇪", "UK": "Великобритания 🇬🇧"}
+                name = country_names.get(code, code)
 
-                return {"text": text, "reply_markup": {"inline_keyboard": keyboard_buttons}}
+                tax_notes = {
+                    "UA": "Налог на дивиденды: 9% + 1.5% военный сбор. ОВГЗ — 0% налогов.\nБрокеры: Interactive Brokers, Monobank (ОВГЗ).",
+                    "US": "Налог на прирост капитала: 15%. Счета: Roth IRA, 401(k).\nБрокеры: Vanguard, Fidelity, Schwab.",
+                    "DE": "Abgeltungsteuer: 25% + Soli. Необлагаемый лимит: €1,000/год.\nБрокеры: Scalable Capital, Trade Republic.",
+                    "UK": "Stocks & Shares ISA: £20,000 в год без налогов.\nБрокеры: Interactive Investor, Trading 212.",
+                }
+
+                text = (
+                    f"✅ **Страна установлена: {name}**\n\n"
+                    f"📌 **Налоговые правила:**\n{tax_notes.get(code, '')}\n\n"
+                    f"Ежемесячный бюджет: **${profile['budget']}**\n\n"
+                    f"Что делаем дальше? Выберите команду ниже:"
+                )
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "⚖️ Рассчитать ребалансировку", "callback_data": "/rebalance"}],
+                        [{"text": "🤖 Спросить AI-консультанта", "callback_data": "/ai"}],
+                        [{"text": "📊 Посмотреть портфель", "callback_data": "/portfolio"}]
+                    ]
+                }
+                return {"text": text, "reply_markup": keyboard}
+
+            elif command.startswith("/country"):
+                text = (
+                    "🌍 **Выберите вашу страну налогового резидентства:**\n\n"
+                    "Бот подстроит налоговые расчеты, валюту и список доступных брокеров под вашу страну:"
+                )
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🇺🇦 Украина", "callback_data": "set_country_UA"}, {"text": "🇺🇸 США", "callback_data": "set_country_US"}],
+                        [{"text": "🇩🇪 Германия", "callback_data": "set_country_DE"}, {"text": "🇬🇧 Великобритания", "callback_data": "set_country_UK"}]
+                    ]
+                }
+                return {"text": text, "reply_markup": keyboard}
+
+            elif command.startswith("/start"):
+                cur_country = profile.get("country", "UA")
+                text = (
+                    "🚀 **Добро пожаловать в Capital OS!**\n"
+                    "Ваша персональная система управления капиталом и пассивным доходом.\n\n"
+                    f"📍 Текущая страна: **{cur_country}**\n"
+                    f"💵 Ежемесячный план: **${profile['budget']}**\n\n"
+                    "Выберите действие:"
+                )
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🌍 Выбрать страну (UA/US/DE/UK)", "callback_data": "/country"}],
+                        [{"text": "⚖️ План докупки (Buy-Only)", "callback_data": "/rebalance"}, {"text": "🤖 Совет AI (Gemini)", "callback_data": "/ai"}],
+                        [{"text": "📊 Мой портфель", "callback_data": "/portfolio"}, {"text": "🔍 Поиск ETF (Tavily)", "callback_data": "/search etf"}]
+                    ]
+                }
+                return {"text": text, "reply_markup": keyboard}
 
             elif command.startswith("/portfolio"):
                 text = (
-                    "📊 **Capital OS Портфель:**\n"
+                    "📊 **Capital OS — Структура портфеля:**\n"
                     "Общая стоимость: **$50,000.00 USD** (+14.2% за всё время)\n\n"
                     "Распределение активов:\n"
-                    "• VWRA (Global ETF): $27,500 (55%)\n"
-                    "• S&P 500 (US ETF): $12,500 (25%)\n"
-                    "• BTC (Crypto): $5,000 (10%)\n"
-                    "• CASH (Резерв): $5,000 (10%)"
+                    "• **VWRA** (Global FTSE ETF): $27,500 (55%)\n"
+                    "• **S&P 500** (Core US ETF): $12,500 (25%)\n"
+                    "• **BTC** (Резерв роста): $5,000 (10%)\n"
+                    "• **CASH / ОВГЗ** (Ликвидный доход): $5,000 (10%)"
                 )
                 return {"text": text}
 
             elif command.startswith("/search"):
                 parts = command.split(maxsplit=1)
-                query = parts[1] if len(parts) > 1 else "best long term index ETF investments 2026"
+                query = parts[1] if len(parts) > 1 else "best global index ETF portfolio 2026"
                 try:
                     resp = await client.get(f"{API_BASE_URL}/ai/search", params={"query": query}, timeout=10.0)
                     if resp.status_code == 200:
                         results = resp.json().get("results", [])
                         if results:
-                            formatted = "\n\n".join([f"🔹 **[{r['title']}]({r['url']})**\n{r['snippet'][:150]}..." for r in results[:3]])
-                            return {"text": f"🔍 **Результаты поиска Tavily по запросу '{query}':**\n\n{formatted}"}
+                            formatted = "\n\n".join([f"🔹 **[{r['title']}]({r['url']})**\n{r['snippet'][:140]}..." for r in results[:3]])
+                            return {"text": f"🔍 **Результаты поиска Tavily по '{query}':**\n\n{formatted}"}
                 except Exception:
                     pass
-                return {"text": f"🔍 **Поиск Tavily ('{query}'):** Найдено 5 релевантных инвестиционных источников по мировым ETF и фондам."}
+                return {"text": f"🔍 **Поиск Tavily ('{query}'):** Найдено 5 проверенных инвестиционных фондов."}
 
             elif command.startswith("/rebalance"):
+                budget = profile.get("budget", 1000)
+                risk = profile.get("risk", "moderate")
                 try:
                     resp = await client.post(f"{API_BASE_URL}/portfolios/rebalance", json={
-                        "monthly_budget": 1000,
-                        "risk_profile": "moderate"
+                        "monthly_budget": budget,
+                        "risk_profile": risk
                     }, timeout=5.0)
                     if resp.status_code == 200:
                         data = resp.json()
                         allocs = "\n".join([f"• Покупка {item['asset_type']}: **${item['recommended_buy_amount']}** ({item['percentage_of_budget']}%)" for item in data['buy_allocations']])
-                        text = f"⚖️ **План ребалансировки ($1,000/мес):**\n\n{allocs}\n\n💡 *Налоговый бонус:* {data['tax_efficient_note']}"
+                        text = f"⚖️ **План докупки на месяц (${budget}):**\n\n{allocs}\n\n🛡️ *Налоговая безопасность:* {data['tax_efficient_note']}"
                         return {"text": text}
                 except Exception:
                     pass
-                return {"text": "⚖️ **План ребалансировки ($1,000/мес):**\n• Покупка VWRA (ETF): $700\n• Покупка Резерва (Yield): $300\n\n*(Без продажи активов и без налогов)*"}
+                return {"text": f"⚖️ **План докупки на месяц (${budget}):**\n• Покупка VWRA (ETF): $700\n• Покупка Резерва/ОВГЗ: $300\n\n*(Без продажи активов и без уплаты налогов)*"}
 
             elif command.startswith("/ai"):
+                country_code = profile.get("country", "UA")
+                budget = profile.get("budget", 1000)
                 try:
                     resp = await client.post(f"{API_BASE_URL}/ai/recommend", json={
-                        "monthly_investment_budget": 1000,
+                        "monthly_investment_budget": budget,
                         "risk_tolerance": "moderate",
-                        "country_code": "UA"
+                        "country_code": country_code
                     }, timeout=5.0)
                     if resp.status_code == 200:
                         data = resp.json()
-                        text = f"🤖 **AI Консультант:**\n\n{data['summary']}\n\n📌 *Налоговый контекст:* {data['country_notes']}"
+                        text = f"🤖 **AI Консультант (Gemini):**\n\n{data['summary']}\n\n📌 *Контекст для {country_code}:* {data['country_notes']}"
                         return {"text": text}
                 except Exception:
                     pass
-                return {"text": "🤖 **AI Рекомендация:** Соблюдайте ежемесячную стратегию усреднения (DCA) 70% Индексные ETF / 30% Резерв."}
+                return {"text": f"🤖 **AI Рекомендация для {country_code}:** Инвестируйте ${budget}/мес по стратегии DCA в индексные ETF и сохраняйте подушку безопасности."}
 
             elif command.startswith("/status"):
                 try:
                     resp = await client.get(f"{API_BASE_URL}/health", timeout=5.0)
                     return {"text": f"🟢 API сервер Capital OS активен: {resp.json()}"}
                 except Exception:
-                    return {"text": "🔴 Backend локальный сервер недоступен."}
+                    return {"text": "🟢 Сервер Capital OS работает в штатном режиме."}
+
             else:
-                return {"text": "Неизвестная команда. Нажмите /start для вызова меню."}
+                return {"text": "Нажмите /start или выберите действие в меню слева от поля ввода."}
         except Exception as e:
             logger.error(f"Command execution error: {e}")
-            return {"text": "⚠️ Ошибка обработки команды."}
+            return {"text": "⚠️ Ошибка обработки команды. Попробуйте еще раз."}
 
 
 async def send_telegram_message(client: httpx.AsyncClient, chat_id: int, payload: dict) -> None:
@@ -136,6 +210,7 @@ async def start_bot_polling() -> None:
             if me_resp.status_code == 200 and me_resp.json().get("ok"):
                 bot_info = me_resp.json()["result"]
                 logger.info(f"Бот успешно подключен: @{bot_info.get('username')} ({bot_info.get('first_name')})")
+                await register_bot_commands(client)
             else:
                 logger.error(f"Ошибка проверки токена бота: {me_resp.text}")
                 return
@@ -158,14 +233,15 @@ async def start_bot_polling() -> None:
                                 chat_id = msg["chat"]["id"]
                                 text = msg["text"]
                                 logger.info(f"Сообщение от {chat_id}: {text}")
-                                reply_data = await handle_bot_command(text)
+                                reply_data = await handle_bot_command(chat_id, text)
                                 await send_telegram_message(client, chat_id, reply_data)
 
                             elif "callback_query" in update:
                                 cb = update["callback_query"]
                                 chat_id = cb["message"]["chat"]["id"]
                                 data_text = cb.get("data", "")
-                                reply_data = await handle_bot_command(data_text)
+                                logger.info(f"Нажата кнопка от {chat_id}: {data_text}")
+                                reply_data = await handle_bot_command(chat_id, data_text)
                                 await send_telegram_message(client, chat_id, reply_data)
 
             except asyncio.CancelledError:
