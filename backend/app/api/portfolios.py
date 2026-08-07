@@ -44,3 +44,18 @@ def add_transaction(tx_in: TransactionCreate, db: Session = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     return PortfolioService.add_transaction(db, tx_in)
+
+
+@router.post("/rebalance")
+def calculate_rebalance(data: dict):
+    from backend.app.recommendations.rebalancer import PortfolioRebalancer
+    current_assets = data.get("current_assets", [
+        {"symbol": "VWRA", "name": "Vanguard FTSE All-World", "value": 27500, "type": "ETF"},
+        {"symbol": "S&P 500", "name": "iShares Core S&P 500", "value": 12500, "type": "ETF"},
+        {"symbol": "BTC", "name": "Bitcoin Reserve", "value": 5000, "type": "Crypto"},
+        {"symbol": "CASH", "name": "High-Yield Reserve", "value": 5000, "type": "Yield"},
+    ])
+    monthly_budget = float(data.get("monthly_budget", 1000.0))
+    risk_profile = data.get("risk_profile", "moderate")
+    return PortfolioRebalancer.calculate_rebalance(current_assets, monthly_budget, risk_profile)
+
