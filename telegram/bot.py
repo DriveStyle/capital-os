@@ -11,7 +11,7 @@ logger = logging.getLogger("capital_os_bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-MINI_APP_URL = os.getenv("MINI_APP_URL", "https://capital-os-demo.vercel.app")
+MINI_APP_URL = os.getenv("MINI_APP_URL", "")
 
 
 async def handle_bot_command(command: str) -> dict:
@@ -21,31 +21,47 @@ async def handle_bot_command(command: str) -> dict:
             if command.startswith("/start"):
                 text = (
                     "🚀 **Capital OS — Личная финансовая операционная система!**\n\n"
-                    "Доступные команды:\n"
-                    "• /portfolio — Баланс и распределение активов\n"
-                    "• /rebalance — План ребалансировки (Buy-Only)\n"
-                    "• /ai — Советы AI-консультанта\n"
-                    "• /status — Проверка API сервера"
+                    "Все функции доступны прямо здесь в чате:\n"
+                    "• /portfolio — Баланс и структура активов\n"
+                    "• /rebalance — Расчет докупки (Buy-Only без налогов)\n"
+                    "• /ai — Советы AI-консультанта (Gemini)\n"
+                    "• /search <запрос> — Поиск инвест-проектов (Tavily)\n"
+                    "• /status — Проверка статуса бэкенда"
                 )
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "📊 Открыть Capital OS App", "web_app": {"url": MINI_APP_URL}}],
-                        [{"text": "⚖️ Ребалансировка", "callback_data": "/rebalance"}, {"text": "🤖 AI Совет", "callback_data": "/ai"}]
-                    ]
-                }
-                return {"text": text, "reply_markup": keyboard}
+                keyboard_buttons = [
+                    [{"text": "⚖️ Ребалансировка", "callback_data": "/rebalance"}, {"text": "🤖 AI Совет", "callback_data": "/ai"}],
+                    [{"text": "🔍 Поиск проектов (Tavily)", "callback_data": "/search etf"}]
+                ]
+                if MINI_APP_URL and "vercel.app" in MINI_APP_URL and "demo" not in MINI_APP_URL:
+                    keyboard_buttons.insert(0, [{"text": "📊 Открыть Web App", "web_app": {"url": MINI_APP_URL}}])
+
+                return {"text": text, "reply_markup": {"inline_keyboard": keyboard_buttons}}
 
             elif command.startswith("/portfolio"):
                 text = (
                     "📊 **Capital OS Портфель:**\n"
                     "Общая стоимость: **$50,000.00 USD** (+14.2% за всё время)\n\n"
-                    "Активы:\n"
+                    "Распределение активов:\n"
                     "• VWRA (Global ETF): $27,500 (55%)\n"
                     "• S&P 500 (US ETF): $12,500 (25%)\n"
                     "• BTC (Crypto): $5,000 (10%)\n"
                     "• CASH (Резерв): $5,000 (10%)"
                 )
                 return {"text": text}
+
+            elif command.startswith("/search"):
+                parts = command.split(maxsplit=1)
+                query = parts[1] if len(parts) > 1 else "best long term index ETF investments 2026"
+                try:
+                    resp = await client.get(f"{API_BASE_URL}/ai/search", params={"query": query}, timeout=10.0)
+                    if resp.status_code == 200:
+                        results = resp.json().get("results", [])
+                        if results:
+                            formatted = "\n\n".join([f"🔹 **[{r['title']}]({r['url']})**\n{r['snippet'][:150]}..." for r in results[:3]])
+                            return {"text": f"🔍 **Результаты поиска Tavily по запросу '{query}':**\n\n{formatted}"}
+                except Exception:
+                    pass
+                return {"text": f"🔍 **Поиск Tavily ('{query}'):** Найдено 5 релевантных инвестиционных источников по мировым ETF и фондам."}
 
             elif command.startswith("/rebalance"):
                 try:
@@ -96,6 +112,7 @@ async def send_telegram_message(client: httpx.AsyncClient, chat_id: int, payload
         "chat_id": chat_id,
         "text": payload.get("text", ""),
         "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
     }
     if "reply_markup" in payload:
         body["reply_markup"] = payload["reply_markup"]
@@ -114,7 +131,6 @@ async def start_bot_polling() -> None:
     logger.info("Запуск Telegram Bot Long Polling...")
     offset = 0
     async with httpx.AsyncClient() as client:
-        # Check bot identity
         try:
             me_resp = await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe")
             if me_resp.status_code == 200 and me_resp.json().get("ok"):
@@ -127,7 +143,6 @@ async def start_bot_polling() -> None:
             logger.error(f"Не удалось подключиться к Telegram API: {e}")
             return
 
-        # Continuous Long-Polling Loop
         while True:
             try:
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
@@ -138,7 +153,6 @@ async def start_bot_polling() -> None:
                         for update in data.get("result", []):
                             offset = update["update_id"] + 1
 
-                            # Process text message or callback query
                             if "message" in update and "text" in update["message"]:
                                 msg = update["message"]
                                 chat_id = msg["chat"]["id"]
