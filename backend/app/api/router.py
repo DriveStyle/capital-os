@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from .health import router as health_router
 from .users import router as users_router
 from .portfolios import router as portfolios_router
