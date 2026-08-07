@@ -26,7 +26,7 @@ class TavilySearchService:
         payload = {
             "api_key": TAVILY_API_KEY,
             "query": query,
-            "search_depth": "smart",
+            "search_depth": "basic",
             "max_results": max_results,
             "include_answer": True,
         }
