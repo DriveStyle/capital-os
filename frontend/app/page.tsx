@@ -37,7 +37,7 @@ export default function CapitalOSDashboard() {
   const [voiceQuery, setVoiceQuery] = useState<string>("");
   const [voiceResponse, setVoiceResponse] = useState<{
     transcript_received: string;
-    intent: str;
+    intent: string;
     ai_response: string;
     suggested_action?: string;
   } | null>(null);
