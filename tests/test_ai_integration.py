@@ -15,10 +15,58 @@ def test_ai_status_endpoint_returns_safe_status():
     assert "total_connections" in data
     assert "configured_providers" in data
     assert "connections" in data
+    assert "active_provider" in data
     # Ensure all connection api_keys are masked with asterisks
     for conn in data["connections"].values():
         if conn.get("api_key"):
             assert "*" in conn["api_key"]
+
+
+def test_ai_set_active_provider_endpoint():
+    """Verify switching active AI provider."""
+    response = client.post("/api/ai/set-active-provider", json={"provider": "omnirouter"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["active_provider"] == "omnirouter"
+
+    # Verify status reflects the change
+    status_res = client.get("/api/ai/status")
+    assert status_res.status_code == 200
+    assert status_res.json()["active_provider"] == "omnirouter"
+
+
+def test_ai_update_connection_endpoint():
+    """Verify updating a connection configuration safely."""
+    payload = {
+        "connection_id": "omnirouter",
+        "provider": "openai_compatible",
+        "api_key": "sk-new-secret-test-token-12345",
+        "base_url": "https://api.omnirouter.ai/v1",
+        "default_model": "omni-pro-v2",
+        "enabled": True,
+        "display_name": "OmniRouter Pro",
+    }
+    response = client.post("/api/ai/connections", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "connections" in data
+    omni_data = data["connections"]["omnirouter"]
+    assert omni_data["default_model"] == "omni-pro-v2"
+    assert omni_data["display_name"] == "OmniRouter Pro"
+    # Ensure updated API key is masked and not exposed plaintext
+    assert "sk-new-secret-test-token-12345" not in str(data)
+    assert "*" in omni_data["api_key"]
+
+
+def test_ai_test_connection_endpoint():
+    """Verify connection health check endpoint."""
+    response = client.post("/api/ai/test-connection", json={"connection_id": "omnirouter"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "latency_ms" in data
+    assert data["connection_id"] == "omnirouter"
 
 
 def test_ai_recommend_endpoint_fallback():

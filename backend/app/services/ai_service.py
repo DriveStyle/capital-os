@@ -6,10 +6,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from ..schemas.ai import AdvisoryRequest, AdvisoryResponse, RecommendationItem
+from ..schemas.ai import (
+    AdvisoryRequest,
+    AdvisoryResponse,
+    RecommendationItem,
+    ConnectionUpdateRequest,
+    ActiveProviderRequest,
+    TestConnectionRequest,
+    TestConnectionResponse,
+)
 from ..config import get_settings
 from ..ai.factory import AIServiceFactory
 from ..ai.manager import AIConnectionManager
+from ..ai.config import AIConnectionConfig
 
 logger = logging.getLogger("ai_service")
 
@@ -25,7 +34,86 @@ class AIService:
 
     @classmethod
     def get_status(cls) -> Dict[str, Any]:
-        return AIServiceFactory.get_safe_status(cls.get_manager())
+        settings = get_settings()
+        active_prov = os.getenv("AI_PROVIDER", settings.ai_provider).lower().strip()
+        status = AIServiceFactory.get_safe_status(cls.get_manager())
+        status["active_provider"] = active_prov
+        return status
+
+    @classmethod
+    def set_active_provider(cls, provider: str) -> Dict[str, str]:
+        prov_clean = provider.lower().strip()
+        os.environ["AI_PROVIDER"] = prov_clean
+        return {"status": "ok", "active_provider": prov_clean}
+
+    @classmethod
+    def update_connection(cls, req: ConnectionUpdateRequest) -> Dict[str, Any]:
+        mgr = cls.get_manager()
+        existing = mgr.get_connection(req.connection_id)
+
+        api_key = req.api_key
+        if existing and (not api_key or "*" in api_key):
+            api_key = existing.api_key
+
+        cfg = AIConnectionConfig(
+            provider=req.provider,
+            api_key=api_key,
+            base_url=req.base_url,
+            default_model=req.default_model,
+            enabled=req.enabled,
+            display_name=req.display_name,
+        )
+        mgr.add_connection(req.connection_id, cfg)
+        return cls.get_status()
+
+    @classmethod
+    def test_connection(cls, req: TestConnectionRequest) -> TestConnectionResponse:
+        import time
+        settings = get_settings()
+        mgr = cls.get_manager()
+        target_id = (req.connection_id or os.getenv("AI_PROVIDER", settings.ai_provider)).lower().strip()
+
+        if not mgr.has_connection(target_id):
+            return TestConnectionResponse(
+                status="error",
+                connection_id=target_id,
+                provider=target_id,
+                latency_ms=0.0,
+                message=f"Connection '{target_id}' is not configured or not found in manager.",
+                response_sample=None,
+            )
+
+        cfg = mgr.get_connection(target_id)
+        start_time = time.perf_counter()
+        try:
+            prov = mgr.get_provider(target_id)
+            output = prov.generate(
+                prompt=req.prompt or "Respond with status OK.",
+                system_instruction="You are a health-check responder. Output exactly 'OK'.",
+                temperature=0.1,
+                max_tokens=20,
+            )
+            latency = round((time.perf_counter() - start_time) * 1000, 2)
+            return TestConnectionResponse(
+                status="ok",
+                connection_id=target_id,
+                provider=cfg.provider if cfg else target_id,
+                model_used=cfg.default_model if cfg else None,
+                latency_ms=latency,
+                message="Connection test successful.",
+                response_sample=output[:100] if output else "OK",
+            )
+        except Exception as e:
+            latency = round((time.perf_counter() - start_time) * 1000, 2)
+            return TestConnectionResponse(
+                status="error",
+                connection_id=target_id,
+                provider=cfg.provider if cfg else target_id,
+                model_used=cfg.default_model if cfg else None,
+                latency_ms=latency,
+                message=f"Connection test failed: {str(e)[:120]}",
+                response_sample=None,
+            )
 
     @classmethod
     def generate_wealth_advice(cls, req: AdvisoryRequest) -> AdvisoryResponse:

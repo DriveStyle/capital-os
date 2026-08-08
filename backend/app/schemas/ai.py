@@ -24,3 +24,32 @@ class AdvisoryResponse(BaseModel):
     recommended_actions: List[RecommendationItem]
     country_notes: str
     provider_used: str
+
+
+class ConnectionUpdateRequest(BaseModel):
+    connection_id: str
+    provider: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    default_model: Optional[str] = None
+    enabled: bool = True
+    display_name: Optional[str] = None
+
+
+class ActiveProviderRequest(BaseModel):
+    provider: str
+
+
+class TestConnectionRequest(BaseModel):
+    connection_id: Optional[str] = None
+    prompt: Optional[str] = "Respond with status OK."
+
+
+class TestConnectionResponse(BaseModel):
+    status: str
+    connection_id: str
+    provider: str
+    model_used: Optional[str] = None
+    latency_ms: float
+    message: str
+    response_sample: Optional[str] = None
