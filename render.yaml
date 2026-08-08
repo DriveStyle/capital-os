@@ -1,0 +1,35 @@
+services:
+  # 1. FastAPI Backend & Telegram WebApp Engine
+  - type: web
+    name: capital-os-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.10
+      - key: APP_NAME
+        value: Capital OS
+      - key: APP_ENV
+        value: production
+      - key: API_PREFIX
+        value: /api
+      - key: AI_PROVIDER
+        value: openai
+
+  # 2. Next.js Web Dashboard
+  - type: web
+    name: capital-os-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: capital-os-backend
+          property: host

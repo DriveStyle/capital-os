@@ -13,6 +13,15 @@ app = FastAPI(
 
 from .api.webapp import WEBAPP_HTML
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(router, prefix=settings.api_prefix)
 

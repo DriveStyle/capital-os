@@ -212,6 +212,13 @@ export default function CapitalOSDashboard() {
     { symbol: "CASH", name: "High-Yield Reserve", allocation: 10, value: 5000, type: "Yield" },
   ];
 
+  const getApiUrl = (path: string): string => {
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!envUrl) return `http://localhost:8000${path}`;
+    const base = envUrl.startsWith("http") ? envUrl : `https://${envUrl}`;
+    return `${base.replace(/\/$/, "")}${path}`;
+  };
+
   // Fetch AI status from backend on mount
   useEffect(() => {
     fetchAiStatus();
@@ -219,7 +226,7 @@ export default function CapitalOSDashboard() {
 
   const fetchAiStatus = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/ai/status");
+      const res = await fetch(getApiUrl("/api/ai/status"));
       if (res.ok) {
         const data = await res.json();
         if (data.active_provider) {
@@ -252,7 +259,7 @@ export default function CapitalOSDashboard() {
   const handleSetActiveProvider = async (providerId: string) => {
     setSwitchingProvider(true);
     try {
-      const res = await fetch("http://localhost:8000/api/ai/set-active-provider", {
+      const res = await fetch(getApiUrl("/api/ai/set-active-provider"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: providerId }),
@@ -279,7 +286,7 @@ export default function CapitalOSDashboard() {
     }));
 
     try {
-      const res = await fetch("http://localhost:8000/api/ai/test-connection", {
+      const res = await fetch(getApiUrl("/api/ai/test-connection"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connection_id: connectionId, prompt: "Capital OS health probe." }),
@@ -335,7 +342,7 @@ export default function CapitalOSDashboard() {
         display_name: conn.display_name,
       };
 
-      const res = await fetch("http://localhost:8000/api/ai/connections", {
+      const res = await fetch(getApiUrl("/api/ai/connections"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -357,7 +364,7 @@ export default function CapitalOSDashboard() {
   const handleCalculateRebalance = async () => {
     setLoadingRebalance(true);
     try {
-      const res = await fetch("http://localhost:8000/api/portfolios/rebalance", {
+      const res = await fetch(getApiUrl("/api/portfolios/rebalance"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ current_assets: assets, monthly_budget: budget, risk_profile: risk }),
@@ -387,7 +394,7 @@ export default function CapitalOSDashboard() {
   const handleGenerateAdvice = async () => {
     setLoadingAi(true);
     try {
-      const res = await fetch("http://localhost:8000/api/ai/recommend", {
+      const res = await fetch(getApiUrl("/api/ai/recommend"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -421,7 +428,7 @@ export default function CapitalOSDashboard() {
     const text = queryText || voiceQuery;
     if (!text) return;
     try {
-      const res = await fetch("http://localhost:8000/api/voice/process", {
+      const res = await fetch(getApiUrl("/api/voice/process"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: text, language: "en" }),
