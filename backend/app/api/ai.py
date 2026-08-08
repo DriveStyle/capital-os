@@ -10,8 +10,12 @@ def get_wealth_recommendations(req: AdvisoryRequest):
     return AIService.generate_wealth_advice(req)
 
 
+@router.get("/status")
+def get_ai_status():
+    return AIService.get_status()
+
+
 @router.get("/search")
 def live_web_search(query: str = "best global ETF investments"):
-    from backend.app.ai.tavily_search import TavilySearchService
+    from ..ai.tavily_search import TavilySearchService
     return {"query": query, "results": TavilySearchService.search_investment_opportunities(query=query)}
-

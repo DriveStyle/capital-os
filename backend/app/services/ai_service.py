@@ -1,95 +1,107 @@
 import os
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
-import httpx
 
 load_dotenv()
 
 from ..schemas.ai import AdvisoryRequest, AdvisoryResponse, RecommendationItem
 from ..config import get_settings
+from ..ai.factory import AIServiceFactory
+from ..ai.manager import AIConnectionManager
 
 logger = logging.getLogger("ai_service")
 
 
 class AIService:
-    @staticmethod
-    def generate_wealth_advice(req: AdvisoryRequest) -> AdvisoryResponse:
+    _manager: Optional[AIConnectionManager] = None
+
+    @classmethod
+    def get_manager(cls) -> AIConnectionManager:
+        if cls._manager is None:
+            cls._manager = AIServiceFactory.create_manager_from_env()
+        return cls._manager
+
+    @classmethod
+    def get_status(cls) -> Dict[str, Any]:
+        return AIServiceFactory.get_safe_status(cls.get_manager())
+
+    @classmethod
+    def generate_wealth_advice(cls, req: AdvisoryRequest) -> AdvisoryResponse:
         settings = get_settings()
-        provider = os.getenv("AI_PROVIDER", settings.ai_provider).lower()
-        groq_key = os.getenv("GROQ_API_KEY")
+        env_provider = os.getenv("AI_PROVIDER", settings.ai_provider).lower().strip()
+        manager = cls.get_manager()
 
         budget = req.monthly_investment_budget or 500.0
         risk = (req.risk_tolerance or "moderate").lower()
         country = (req.country_code or "UA").upper()
 
-        if groq_key and (provider == "groq" or not provider):
+        provider_name = env_provider if env_provider else "groq"
+        if manager.has_connection(provider_name):
             try:
-                headers = {
-                    "Authorization": f"Bearer {groq_key}",
-                    "Content-Type": "application/json",
-                }
+                ai_provider = manager.get_provider(provider_name)
                 prompt = (
                     f"You are Capital OS AI Wealth Advisor. Generate a structured JSON wealth plan for a user in country '{country}' "
                     f"with a monthly budget of ${budget} and risk profile '{risk}'. "
                     f"Return ONLY a raw JSON object with keys: summary, risk_assessment, country_notes, "
                     f"recommended_actions (array of objects with category, action, priority, rationale)."
                 )
-                payload = {
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": "You are a professional wealth operating system advisor. Respond strictly in valid JSON."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "response_format": {"type": "json_object"},
-                    "temperature": 0.3,
-                }
+                system_instruction = "You are a professional wealth operating system advisor. Respond strictly in valid JSON."
 
-                with httpx.Client(timeout=15.0) as client:
-                    resp = client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
-                    if resp.status_code == 200:
-                        content = resp.json()["choices"][0]["message"]["content"]
-                        parsed = json.loads(content)
+                raw_output = ai_provider.generate(
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    temperature=0.3,
+                )
+
+                if raw_output and not raw_output.startswith("[") and not raw_output.endswith("fallback]"):
+                    cleaned_output = raw_output.strip()
+                    if cleaned_output.startswith("```"):
+                        lines = cleaned_output.splitlines()
+                        if len(lines) >= 2:
+                            cleaned_output = "\n".join(lines[1:-1])
+
+                    parsed = json.loads(cleaned_output)
+                    recs = [
+                        RecommendationItem(
+                            category=r.get("category", "General"),
+                            action=r.get("action", "Invest"),
+                            priority=r.get("priority", "Medium"),
+                            rationale=r.get("rationale", ""),
+                        )
+                        for r in parsed.get("recommended_actions", [])
+                    ]
+                    if not recs:
                         recs = [
                             RecommendationItem(
-                                category=r.get("category", "General"),
-                                action=r.get("action", "Invest"),
-                                priority=r.get("priority", "Medium"),
-                                rationale=r.get("rationale", ""),
+                                category="Core Indexing",
+                                action=f"Allocate ${int(budget * 0.8)}/mo into broad market ETFs.",
+                                priority="High",
+                                rationale=f"{provider_name.capitalize()} AI validated portfolio foundation.",
                             )
-                            for r in parsed.get("recommended_actions", [])
                         ]
-                        if not recs:
-                            recs = [
-                                RecommendationItem(
-                                    category="Core Indexing",
-                                    action=f"Allocate ${int(budget * 0.8)}/mo into broad market ETFs.",
-                                    priority="High",
-                                    rationale="Groq AI validated portfolio foundation.",
-                                )
-                            ]
-                        raw_summary = parsed.get("summary", f"AI Wealth Strategy for {country}")
-                        if isinstance(raw_summary, dict):
-                            raw_summary = json.dumps(raw_summary, ensure_ascii=False)
+                    raw_summary = parsed.get("summary", f"AI Wealth Strategy for {country}")
+                    if isinstance(raw_summary, dict):
+                        raw_summary = json.dumps(raw_summary, ensure_ascii=False)
 
-                        raw_risk = parsed.get("risk_assessment", f"Risk profile: {risk.upper()}")
-                        if isinstance(raw_risk, dict):
-                            raw_risk = json.dumps(raw_risk, ensure_ascii=False)
+                    raw_risk = parsed.get("risk_assessment", f"Risk profile: {risk.upper()}")
+                    if isinstance(raw_risk, dict):
+                        raw_risk = json.dumps(raw_risk, ensure_ascii=False)
 
-                        raw_notes = parsed.get("country_notes", f"Jurisdiction: {country}")
-                        if isinstance(raw_notes, dict):
-                            raw_notes = json.dumps(raw_notes, ensure_ascii=False)
+                    raw_notes = parsed.get("country_notes", f"Jurisdiction: {country}")
+                    if isinstance(raw_notes, dict):
+                        raw_notes = json.dumps(raw_notes, ensure_ascii=False)
 
-                        return AdvisoryResponse(
-                            summary=str(raw_summary),
-                            risk_assessment=str(raw_risk),
-                            recommended_actions=recs,
-                            country_notes=str(raw_notes),
-                            provider_used="Groq (Llama-3.3-70b)",
-                        )
+                    return AdvisoryResponse(
+                        summary=str(raw_summary),
+                        risk_assessment=str(raw_risk),
+                        recommended_actions=recs,
+                        country_notes=str(raw_notes),
+                        provider_used=f"{provider_name.capitalize()} AI",
+                    )
             except Exception as e:
-                logger.error(f"Groq API call failed: {e}. Falling back to rule engine.")
+                logger.error(f"AI Provider '{provider_name}' generation failed: {e}. Falling back to rule engine.")
 
         # Fallback Rule-based engine
         if risk == "conservative":
@@ -142,5 +154,5 @@ class AIService:
             risk_assessment=f"Risk profile evaluated as [{risk.upper()}]. Recommended investment horizon: 5+ years.",
             recommended_actions=[rec_1, rec_2],
             country_notes=country_notes,
-            provider_used=provider,
+            provider_used=f"{provider_name} (Rule Engine Fallback)",
         )

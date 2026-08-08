@@ -1,40 +1,34 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 
 class AIProvider(ABC):
-    """Abstract interface for AI providers."""
+    """
+    Abstract Base Class for all Capital OS AI providers.
+
+    Standardized contract for Gemini, Groq, OpenAI, Claude, Grok,
+    OpenRouter, OmniRouter, Ollama, and OpenAI-compatible providers.
+    """
 
     @abstractmethod
-    def generate(self, prompt: str, **kwargs: Any) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Generate a text or structured response for a given prompt.
+
+        :param prompt: User prompt or query text.
+        :param system_instruction: Optional system instruction or role context.
+        :param temperature: Sampling temperature for deterministic/creative outputs.
+        :param max_tokens: Maximum number of tokens to generate.
+        :param kwargs: Additional provider-specific parameters.
+        :return: Generated response string.
+        """
         raise NotImplementedError
-
-
-class OpenAIProvider(AIProvider):
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        return f"OpenAI response for: {prompt}"
-
-
-class AnthropicProvider(AIProvider):
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        return f"Anthropic response for: {prompt}"
-
-
-class GeminiProvider(AIProvider):
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        return f"Gemini response for: {prompt}"
-
-
-class GrokProvider(AIProvider):
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        return f"Grok response for: {prompt}"
-
-
-def get_provider(name: str) -> AIProvider:
-    providers = {
-        "openai": OpenAIProvider(),
-        "anthropic": AnthropicProvider(),
-        "gemini": GeminiProvider(),
-        "grok": GrokProvider(),
-    }
-    return providers.get(name.lower(), OpenAIProvider())
