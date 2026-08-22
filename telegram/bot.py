@@ -112,7 +112,7 @@ async def handle_bot_command(chat_id: int, command: str) -> dict:
 
                 keyboard = {
                     "inline_keyboard": [
-                        [{"text": "📊 Открыть Capital OS Web App", "web_app": {"url": "https://capital-os-lzje.onrender.com/webapp"}}],
+                        [{"text": "📊 Открыть Capital OS Web App", "web_app": {"url": f"{RENDER_EXTERNAL_URL}/webapp"}}],
                         [{"text": "🌍 Сменить страну (15+ стран)", "callback_data": "country_menu"}],
                         [{"text": "⚖️ План докупки (Buy-Only)", "callback_data": "/rebalance"}, {"text": "🤖 Совет AI (Gemini)", "callback_data": "/ai"}],
                         [{"text": "📊 Мой портфель", "callback_data": "/portfolio"}, {"text": "🔍 Поиск фондов (Tavily)", "callback_data": "/search etf"}]

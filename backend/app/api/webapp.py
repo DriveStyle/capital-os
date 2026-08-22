@@ -220,11 +220,33 @@ WEBAPP_HTML = """<!DOCTYPE html>
       GLOBAL: { name: "Международный 🌍", notes: "Используйте UCITS ETF (VWRA/VUAA) с налогом на дивиденды 15%." }
     };
 
-    function updateCountry() {
+    async function updateCountry() {
       const code = document.getElementById('countrySelect').value;
       const data = TAX_DATA[code] || TAX_DATA.GLOBAL;
-      document.getElementById('taxDetails').innerText = data.notes;
+      const taxDetailsDiv = document.getElementById('taxDetails');
+      taxDetailsDiv.innerHTML = `<strong>Справочник:</strong> ${data.notes}<br/><div class="mt-2 text-slate-400 animate-pulse text-[10px]">Запрос ИИ-совета для ${code}...</div>`;
       if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+      try {
+        const monthly = Number(document.getElementById('compoundSlider').value) || 1000;
+        const res = await fetch("/api/ai/recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            monthly_investment_budget: monthly,
+            risk_tolerance: "moderate",
+            country_code: code
+          })
+        });
+        if (res.ok) {
+          const aiData = await res.json();
+          taxDetailsDiv.innerHTML = `<strong>Справочник:</strong> ${data.notes}<hr class="my-2 border-slate-800"/>👤 <strong>ИИ-совет (${aiData.provider_used || 'AIRouter'}):</strong> ${aiData.summary}<br/><span class="text-[10px] text-blue-400 mt-1 block">📌 ${aiData.country_notes}</span>`;
+          return;
+        }
+      } catch (e) {
+        console.error("AI recommendation error:", e);
+      }
+      taxDetailsDiv.innerHTML = `<strong>Справочник:</strong> ${data.notes}`;
     }
 
     function calculateCompound() {
@@ -245,13 +267,52 @@ WEBAPP_HTML = """<!DOCTYPE html>
       calculateRebalance(monthly);
     }
 
-    function calculateRebalance(monthlyBudget) {
+    async function calculateRebalance(monthlyBudget) {
       const b = monthlyBudget !== undefined ? monthlyBudget : Number(document.getElementById('compoundSlider').value) || 1000;
+      const rebalanceResult = document.getElementById('rebalanceResult');
+      
+      const current_assets = [
+        {"symbol": "VWRA", "name": "Vanguard FTSE All-World", "value": 27500, "type": "ETF"},
+        {"symbol": "S&P 500", "name": "iShares Core S&P 500", "value": 12500, "type": "ETF"},
+        {"symbol": "BTC", "name": "Bitcoin Reserve", "value": 5000, "type": "Crypto"},
+        {"symbol": "CASH", "name": "High-Yield Reserve", "value": 5000, "type": "Yield"},
+      ];
+      
+      try {
+        const res = await fetch("/api/portfolios/rebalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_assets: current_assets,
+            monthly_budget: b,
+            risk_profile: "moderate"
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.buy_allocations && data.buy_allocations.length > 0) {
+            rebalanceResult.innerHTML = data.buy_allocations.map(alloc => `
+              <div class="flex justify-between items-center p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
+                <span class="font-bold text-white flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full ${alloc.asset_type === 'ETF' ? 'bg-blue-500' : alloc.asset_type === 'Crypto' ? 'bg-amber-500' : 'bg-emerald-500'}"></span>
+                  ${alloc.asset_type}
+                </span>
+                <span class="font-bold text-blue-400">+$${alloc.recommended_buy_amount.toLocaleString()} (${alloc.percentage_of_budget}%)</span>
+              </div>
+            `).join('');
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Rebalance API error:", e);
+      }
+
+      // Fallback
       const etf = Math.round(b * 0.7);
       const yieldAmt = Math.round(b * 0.2);
       const crypto = Math.round(b * 0.1);
 
-      document.getElementById('rebalanceResult').innerHTML = `
+      rebalanceResult.innerHTML = `
         <div class="flex justify-between items-center p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
           <span class="font-bold text-white flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span> VWRA (Global ETF)</span>
           <span class="font-bold text-blue-400">+$${etf.toLocaleString()} (70%)</span>
